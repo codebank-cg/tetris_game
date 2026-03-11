@@ -1,7 +1,7 @@
 package model
 
 import (
-	tu "github.com/oc-garden/oc_garden/tetris_game/internal/testutil"
+	tu "github.com/oc-garden/tetris_game/internal/testutil"
 	"testing"
 )
 
