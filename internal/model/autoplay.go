@@ -157,18 +157,6 @@ func getColHeight(board *Board, col int) int {
 	return 0
 }
 
-// getMaxHeight returns highest column.
-func getMaxHeight(board *Board) int {
-	max := 0
-	for x := 0; x < 10; x++ {
-		h := getColHeight(board, x)
-		if h > max {
-			max = h
-		}
-	}
-	return max
-}
-
 // getAggregateHeight returns sum of all column heights.
 func getAggregateHeight(board *Board) int {
 	total := 0
