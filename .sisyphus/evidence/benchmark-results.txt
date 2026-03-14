@@ -1,0 +1,8 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/oc-garden/tetris_game/internal/model
+cpu: Intel(R) Core(TM) i5-1038NG7 CPU @ 2.00GHz
+BenchmarkFindBestMove-8           	   13377	     84844 ns/op	   36928 B/op	     785 allocs/op
+BenchmarkFindBestMoveWithNext-8   	     350	   3405200 ns/op	  993893 B/op	   19329 allocs/op
+PASS
+ok  	github.com/oc-garden/tetris_game/internal/model	4.142s

@@ -1,0 +1,15 @@
+=== RUN   TestTwoPieceLookahead_Capability
+    autoplay_integration_test.go:318: Current AI decision: X=3, rotations=0, drops=17
+    autoplay_integration_test.go:327: After O-piece: Lines cleared so far = 2
+    autoplay_integration_test.go:336: I-piece position before move: X=3, Y=18
+    autoplay_integration_test.go:340: NOTE: Current single-piece AI may not find optimal 2-piece Tetris setup
+    autoplay_integration_test.go:341: After 2-piece lookahead fix: AI should choose O-piece position enabling I-piece Tetris
+--- PASS: TestTwoPieceLookahead_Capability (0.00s)
+=== RUN   TestTwoPieceLookahead_TetrisExecution
+    autoplay_integration_test.go:372: Executed 0 Tetrises in 74 pieces (0.00%)
+--- PASS: TestTwoPieceLookahead_TetrisExecution (0.20s)
+=== RUN   TestTwoPieceLookahead_NoExcessiveAllocations
+    autoplay_test.go:862: Allocations per call: 561.0 (acceptable for 2-piece lookahead)
+--- PASS: TestTwoPieceLookahead_NoExcessiveAllocations (0.01s)
+PASS
+ok  	github.com/oc-garden/tetris_game/internal/model	0.218s

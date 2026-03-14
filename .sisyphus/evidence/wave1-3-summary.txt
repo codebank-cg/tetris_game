@@ -1,0 +1,7 @@
+=== Wave 1-3 Complete ==2026年 3月14日 星期六 10時31分33秒 CST ===
+?   	github.com/oc-garden/tetris_game/cmd/tetris	[no test files]
+?   	github.com/oc-garden/tetris_game/internal/assets	[no test files]
+?   	github.com/oc-garden/tetris_game/internal/audio	[no test files]
+ok  	github.com/oc-garden/tetris_game/internal/model	(cached)
+?   	github.com/oc-garden/tetris_game/internal/testutil	[no test files]
+?   	github.com/oc-garden/tetris_game/internal/ui	[no test files]

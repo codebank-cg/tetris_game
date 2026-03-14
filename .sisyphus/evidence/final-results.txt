@@ -1,0 +1,17 @@
+=== FINAL TEST RESULTS ===2026年 3月14日 星期六 10時35分06秒 CST==
+?   	github.com/oc-garden/tetris_game/cmd/tetris	[no test files]
+?   	github.com/oc-garden/tetris_game/internal/assets	[no test files]
+?   	github.com/oc-garden/tetris_game/internal/audio	[no test files]
+ok  	github.com/oc-garden/tetris_game/internal/model	(cached)
+?   	github.com/oc-garden/tetris_game/internal/testutil	[no test files]
+?   	github.com/oc-garden/tetris_game/internal/ui	[no test files]
+goos: darwin
+goarch: amd64
+pkg: github.com/oc-garden/tetris_game/internal/model
+cpu: Intel(R) Core(TM) i5-1038NG7 CPU @ 2.00GHz
+BenchmarkFindBestMove-8    	   12966	     84877 ns/op	   37376 B/op	     795 allocs/op
+BenchmarkEvaluateBoard-8   	 1256084	       953.0 ns/op	       0 B/op	       0 allocs/op
+BenchmarkAutoPlayGame-8    	     769	   1460470 ns/op	  870426 B/op	   18652 allocs/op
+PASS
+ok  	github.com/oc-garden/tetris_game/internal/model	5.515s
+=== BUILD & TEST COMPLETE ===
