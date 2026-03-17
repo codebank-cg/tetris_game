@@ -1,6 +1,11 @@
-Tetris (Go + tcell v2)
+# 🎮 Tetris Game - Go + tcell v2
 
-Overview: This repository contains a terminal-based Tetris game powered by the tcell v2 library.
+> **📢 Announcement**: This is an open-source terminal-based Tetris game implementation. All code was AI-generated using OpenCode with the qwen3.5-plus model. Built with Go and the tcell v2 library for cross-platform terminal support.
+>
+> **Repository**: [github.com/codebank-cg/tetris_game](https://github.com/codebank-cg/tetris_game.git)
+>
+> ---
+
 Go version detected: go1.26.0 darwin/amd64
 
 Prerequisites
