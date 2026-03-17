@@ -97,4 +97,4 @@ go.work.sum
 .qtc_clangd/
 
 # opencode & oh-my-opencode auto generated
-.sisyphus
+.sisyphus/
