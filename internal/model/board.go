@@ -83,3 +83,32 @@ func (b *Board) ClearLine(y int) {
 		b.cells[19][x] = 0
 	}
 }
+
+// ClearLines removes all lines at the given y-coordinates in a single pass.
+// This is the correct multi-line clear: it avoids index shifting bugs that
+// occur when calling ClearLine repeatedly for adjacent rows.
+func (b *Board) ClearLines(lines []int) {
+	if len(lines) == 0 {
+		return
+	}
+	// Build a set of rows to remove for O(1) lookup
+	toRemove := make(map[int]bool, len(lines))
+	for _, y := range lines {
+		toRemove[y] = true
+	}
+	// Collect surviving rows (bottom to top order)
+	surviving := make([][10]int, 0, 20)
+	for y := 0; y < 20; y++ {
+		if !toRemove[y] {
+			surviving = append(surviving, b.cells[y])
+		}
+	}
+	// Rebuild board: surviving rows at bottom, empty rows at top
+	for y := 0; y < 20; y++ {
+		if y < len(surviving) {
+			b.cells[y] = surviving[y]
+		} else {
+			b.cells[y] = [10]int{}
+		}
+	}
+}

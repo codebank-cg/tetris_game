@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -16,6 +17,7 @@ func main() {
 	musicPlayer := audio.NewMusicPlayer()
 	go musicPlayer.PlayKorobeiniki()
 
+	var mu sync.Mutex // protects game, ghostEnabled, gameOverDetected
 	game := model.NewGameState()
 	autoPlayer := model.NewAutoPlayer()
 	ghostEnabled := false
@@ -39,11 +41,16 @@ func main() {
 		boardX := x + 1
 		boardY := y + 1
 
+		mu.Lock()
+		g := game
+		ge := ghostEnabled
+		mu.Unlock()
+
 		for row := 0; row < 20; row++ {
 			screenY := boardY + (19 - row)
 			for col := 0; col < 10; col++ {
 				cellX := boardX + col*2
-				color := game.Board.Get(col, row)
+				color := g.Board.Get(col, row)
 				if color != 0 {
 					baseColor := colors[color]
 					screen.SetContent(cellX, screenY, '█', nil, tcell.StyleDefault.Foreground(baseColor).Background(tcell.ColorBlack))
@@ -52,10 +59,10 @@ func main() {
 			}
 		}
 
-		if game.CurrentPiece != nil && !game.GameOver && ghostEnabled && !autoPlayer.IsEnabled() {
-			ghostY := game.GetGhostY()
-			if ghostY >= 0 && ghostY < game.CurrentPiece.Y && ghostY < 20 {
-				matrix := game.CurrentPiece.GetMatrix()
+		if g.CurrentPiece != nil && !g.GameOver && ge && !autoPlayer.IsEnabled() {
+			ghostY := g.GetGhostY()
+			if ghostY >= 0 && ghostY <= g.CurrentPiece.Y && ghostY < 20 {
+				matrix := g.CurrentPiece.GetMatrix()
 				if matrix != nil {
 					ghostStyle := tcell.StyleDefault.Foreground(tcell.GetColor("#90EE90")).Background(tcell.ColorBlack)
 					for row := 0; row < 4; row++ {
@@ -63,7 +70,7 @@ func main() {
 							if matrix[row][col] != 0 {
 								pieceY := ghostY - row
 								if pieceY >= 0 && pieceY < 20 {
-									bx := boardX + (game.CurrentPiece.X+col)*2
+									bx := boardX + (g.CurrentPiece.X+col)*2
 									by := boardY + (19 - pieceY)
 									screen.SetContent(bx, by, '░', nil, ghostStyle)
 									screen.SetContent(bx+1, by, '░', nil, ghostStyle)
@@ -75,14 +82,14 @@ func main() {
 			}
 		}
 
-		if game.CurrentPiece != nil && !game.GameOver {
-			matrix := game.CurrentPiece.GetMatrix()
-			pieceStyle := tcell.StyleDefault.Foreground(colors[game.CurrentPiece.Color]).Background(tcell.ColorBlack)
+		if g.CurrentPiece != nil && !g.GameOver {
+			matrix := g.CurrentPiece.GetMatrix()
+			pieceStyle := tcell.StyleDefault.Foreground(colors[g.CurrentPiece.Color]).Background(tcell.ColorBlack)
 			for row := 0; row < 4; row++ {
 				for col := 0; col < 4; col++ {
 					if matrix[row][col] != 0 {
-						bx := boardX + (game.CurrentPiece.X+col)*2
-						by := boardY + (19 - (game.CurrentPiece.Y - row))
+						bx := boardX + (g.CurrentPiece.X+col)*2
+						by := boardY + (19 - (g.CurrentPiece.Y - row))
 						if by >= boardY && by < boardY+20 && bx >= boardX && bx < boardX+20 {
 							screen.SetContent(bx, by, '█', nil, pieceStyle)
 							screen.SetContent(bx+1, by, '█', nil, pieceStyle)
@@ -92,7 +99,7 @@ func main() {
 			}
 		}
 
-		if game.GameOver {
+		if g.GameOver {
 			gameOverText := "GAME OVER"
 			startX := boardX + (20-len(gameOverText))/2
 			startY := boardY + 9
@@ -117,14 +124,18 @@ func main() {
 	nextBox.SetBorderAttributes(tcell.AttrBold)
 	nextBox.SetTitle(" NEXT ").SetTitleAlign(tview.AlignCenter)
 	nextBox.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		if game.NextPiece == nil {
+		mu.Lock()
+		g := game
+		mu.Unlock()
+
+		if g.NextPiece == nil {
 			return x, y, width, height
 		}
 
 		boxWidth := width - 2
 		boxHeight := height - 2
-		matrix := game.NextPiece.GetMatrix()
-		pieceColor := colors[game.NextPiece.Color]
+		matrix := g.NextPiece.GetMatrix()
+		pieceColor := colors[g.NextPiece.Color]
 		pieceStyle := tcell.StyleDefault.Foreground(pieceColor).Background(tcell.ColorBlack)
 
 		minCol, maxCol := 4, 0
@@ -266,7 +277,9 @@ func main() {
 				if autoPlayer.IsEnabled() {
 					autoText.SetText("AUTO-PLAY: ON ")
 					speedText.SetText(fmt.Sprintf("SPEED:   %d", autoPlayer.GetSpeedLevel()))
+					mu.Lock()
 					ghostEnabled = false
+					mu.Unlock()
 					ghostText.SetText("GHOST: OFF")
 				} else {
 					autoText.SetText("AUTO-PLAY: OFF")
@@ -275,14 +288,20 @@ func main() {
 				}
 				return nil
 			case 'z', 'Z':
-				if !game.Paused && !game.GameOver {
-					game.RotatePieceCounter()
+				mu.Lock()
+				g := game
+				mu.Unlock()
+				if !g.Paused && !g.GameOver {
+					g.RotatePieceCounter()
 				}
 				return nil
 			case 'g', 'G':
 				if !autoPlayer.IsEnabled() {
+					mu.Lock()
 					ghostEnabled = !ghostEnabled
-					if ghostEnabled {
+					ge := ghostEnabled
+					mu.Unlock()
+					if ge {
 						ghostText.SetText("GHOST: ON ")
 					} else {
 						ghostText.SetText("GHOST: OFF")
@@ -290,51 +309,80 @@ func main() {
 				}
 				return nil
 			case ' ':
-				if !game.Paused && !game.GameOver {
-					dropped := game.DropPiece()
-					game.UpdateScore(dropped)
+				mu.Lock()
+				g := game
+				mu.Unlock()
+				if !g.Paused && !g.GameOver {
+					dropped := g.DropPiece()
+					// NES Tetris: 2 points per row hard-dropped
+					g.Score += dropped * 2
 				}
 				return nil
 			case 'p', 'P':
+				mu.Lock()
 				game.Paused = !game.Paused
+				mu.Unlock()
 				app.Draw()
 				return nil
 			case 'r', 'R':
+				mu.Lock()
 				game = model.NewGameState()
+				mu.Unlock()
+				musicPlayer.Stop()
+				musicPlayer.Restart()
+				go musicPlayer.PlayKorobeiniki()
 				if autoPlayer.IsEnabled() {
 					autoText.SetText("AUTO-PLAY: ON ")
 					speedText.SetText(fmt.Sprintf("SPEED:   %d", autoPlayer.GetSpeedLevel()))
+					mu.Lock()
 					ghostEnabled = false
+					mu.Unlock()
 					ghostText.SetText("GHOST: OFF")
 				} else {
 					autoText.SetText("AUTO-PLAY: OFF")
 					speedText.SetText("SPEED:   -")
+					mu.Lock()
 					if !ghostEnabled {
+						mu.Unlock()
 						ghostText.SetText("GHOST: OFF")
+					} else {
+						mu.Unlock()
 					}
 				}
 				autoParamsText.SetText("TARGET:  X: -  R:-\nSCORE:   -. -")
 				return nil
 			}
 		case tcell.KeyLeft:
-			if !game.Paused && !game.GameOver {
-				game.MovePiece(-1, 0)
+			mu.Lock()
+			g := game
+			mu.Unlock()
+			if !g.Paused && !g.GameOver {
+				g.MovePiece(-1, 0)
 			}
 			return nil
 		case tcell.KeyRight:
-			if !game.Paused && !game.GameOver {
-				game.MovePiece(1, 0)
+			mu.Lock()
+			g := game
+			mu.Unlock()
+			if !g.Paused && !g.GameOver {
+				g.MovePiece(1, 0)
 			}
 			return nil
 		case tcell.KeyDown:
-			if !game.Paused && !game.GameOver {
-				game.SoftDrop()
+			mu.Lock()
+			g := game
+			mu.Unlock()
+			if !g.Paused && !g.GameOver {
+				g.SoftDrop()
 				lastDrop = time.Now()
 			}
 			return nil
 		case tcell.KeyUp:
-			if !game.Paused && !game.GameOver {
-				game.RotatePiece()
+			mu.Lock()
+			g := game
+			mu.Unlock()
+			if !g.Paused && !g.GameOver {
+				g.RotatePiece()
 			}
 			return nil
 		}
@@ -362,59 +410,71 @@ func main() {
 				}
 			}
 
-			if autoPlayer.IsEnabled() && !game.Paused && !game.GameOver && !game.IsClearAnimating() && game.CurrentPiece != nil {
-				delay := model.GetDelayForSpeed(game.GetDropInterval(), autoPlayer.GetSpeedLevel())
-				if model.IsInDropPhase(game) {
+			mu.Lock()
+			g := game
+			mu.Unlock()
+
+			if autoPlayer.IsEnabled() && !g.Paused && !g.GameOver && !g.IsClearAnimating() && g.CurrentPiece != nil {
+				delay := model.GetDelayForSpeed(g.GetDropInterval(), autoPlayer.GetSpeedLevel())
+				if model.IsInDropPhase(g) {
 					delay = delay / 3
 				}
 				if time.Since(lastActionTime) > time.Duration(delay)*time.Millisecond {
 					if currentDecision == nil {
-						currentDecision = model.FindBestMoveWithNext(game)
+						currentDecision = model.FindBestMoveWithNext(g)
 					}
 					if currentDecision != nil {
-						if model.ExecuteMove(game, currentDecision) {
+						if model.ExecuteMove(g, currentDecision) {
 							currentDecision = nil
 						}
 						lastActionTime = time.Now()
 						boardChanged = true
 					} else {
-						game.SoftDrop()
+						g.SoftDrop()
 						lastActionTime = time.Now()
 						boardChanged = true
 					}
 				}
 			}
 
-			if !autoPlayer.IsEnabled() && time.Since(lastDrop) > time.Duration(game.GetDropInterval())*time.Millisecond && !game.Paused && !game.GameOver && !game.IsClearAnimating() {
-				game.SoftDrop()
+			if !autoPlayer.IsEnabled() && time.Since(lastDrop) > time.Duration(g.GetDropInterval())*time.Millisecond && !g.Paused && !g.GameOver && !g.IsClearAnimating() {
+				g.SoftDrop()
 				lastDrop = time.Now()
 				boardChanged = true
 			}
 
-			if game.IsClearAnimating() {
-				linesCleared := game.UpdateClearAnimation()
+			if g.IsClearAnimating() {
+				linesCleared := g.UpdateClearAnimation()
 				if linesCleared {
-					musicPlayer.PlayLineClearBeep()
+					go musicPlayer.PlayLineClearBeep()
 					boardChanged = true
 				}
 			}
 
-			if game.GameOver && !gameOverDetected {
+			mu.Lock()
+			if g.GameOver && !gameOverDetected {
 				gameOverDetected = true
+				mu.Unlock()
 				musicPlayer.Stop()
 				boardChanged = true
+			} else {
+				mu.Unlock()
 			}
 
-			scoreChanged := game.Score != lastScore || game.Level != lastLevel || game.LinesCleared != lastLines
+			scoreChanged := g.Score != lastScore || g.Level != lastLevel || g.LinesCleared != lastLines
 			currentPiecePos := 0
 			pieceMoved := false
-			if game.CurrentPiece != nil {
-				currentPiecePos = game.CurrentPiece.X*100 + game.CurrentPiece.Y
+			if g.CurrentPiece != nil {
+				currentPiecePos = g.CurrentPiece.X*100 + g.CurrentPiece.Y
 				pieceMoved = currentPiecePos != lastPiecePos
 			}
 
-			if autoPlayer.IsEnabled() && !game.GameOver && game.CurrentPiece != nil {
-				decision := model.FindBestMoveWithNext(game)
+			// Reuse currentDecision for display — avoid redundant FindBestMoveWithNext call
+			if autoPlayer.IsEnabled() && !g.GameOver && g.CurrentPiece != nil {
+				decision := currentDecision
+				if decision == nil {
+					decision = model.FindBestMoveWithNext(g)
+				}
 				if decision != nil {
 					autoParams := fmt.Sprintf("TARGET:  X:%2d  R:%d\nSCORE:   %.1f",
 						decision.GetTargetX(), decision.GetRotations(), decision.GetScore())
@@ -445,10 +505,10 @@ func main() {
 						"[#FFFF00]P[white] Pause\n"+
 						"[#FFFF00]R[white] Restart\n"+
 						"[#FFFF00]Q[white] Quit",
-					game.Score, game.Level, game.LinesCleared))
-				lastScore = game.Score
-				lastLevel = game.Level
-				lastLines = game.LinesCleared
+					g.Score, g.Level, g.LinesCleared))
+				lastScore = g.Score
+				lastLevel = g.Level
+				lastLines = g.LinesCleared
 			}
 
 			if autoPlayer.IsEnabled() {
@@ -457,8 +517,12 @@ func main() {
 				speedText.SetText("SPEED:   -")
 			}
 
+			mu.Lock()
+			ge := ghostEnabled
+			mu.Unlock()
+
 			if !autoPlayer.IsEnabled() {
-				if ghostEnabled {
+				if ge {
 					ghostText.SetText("GHOST: ON ")
 				} else {
 					ghostText.SetText("GHOST: OFF")

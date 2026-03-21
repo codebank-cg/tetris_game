@@ -708,9 +708,16 @@ func TestEvaluateTwoPieceSequence_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("NoValidNextMoves", func(t *testing.T) {
-		// Fill board completely except 1 row
-		for y := 0; y < 19; y++ {
+		// Block all I-piece spawn positions without creating complete rows
+		// (complete rows would be cleared by lookahead, opening up space).
+		// Strategy: alternate empty column between rows — even rows leave col 0 empty,
+		// odd rows leave col 9 empty. This prevents the I-piece (4 wide or 4 tall) from
+		// finding any valid spawn position at Y=18.
+		for y := 15; y < 20; y++ {
 			for x := 0; x < 10; x++ {
+				if (y%2 == 0 && x == 0) || (y%2 == 1 && x == 9) {
+					continue // leave this cell empty
+				}
 				gameState.Board.Set(x, y, 1)
 			}
 		}

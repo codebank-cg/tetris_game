@@ -59,30 +59,50 @@ func (gs *GameState) MovePiece(dx, dy int) bool {
 	return false
 }
 
-// RotatePiece rotates the current piece clockwise.
+// RotatePiece rotates the current piece clockwise using SRS wall kicks.
 func (gs *GameState) RotatePiece() bool {
 	if gs.CurrentPiece == nil || gs.Paused || gs.GameOver {
 		return false
 	}
+	fromRot := gs.CurrentPiece.Rotation
 	gs.CurrentPiece.RotateClockwise()
-	if !gs.isValidPosition(gs.CurrentPiece, gs.CurrentPiece.X, gs.CurrentPiece.Y) {
-		gs.CurrentPiece.RotateCounterClockwise()
-		return false
+	toRot := gs.CurrentPiece.Rotation
+	kicks := gs.CurrentPiece.GetWallKicks(fromRot, toRot)
+	for _, kick := range kicks {
+		newX := gs.CurrentPiece.X + kick[0]
+		newY := gs.CurrentPiece.Y + kick[1]
+		if gs.isValidPosition(gs.CurrentPiece, newX, newY) {
+			gs.CurrentPiece.X = newX
+			gs.CurrentPiece.Y = newY
+			return true
+		}
 	}
-	return true
+	// All kicks failed — revert
+	gs.CurrentPiece.RotateCounterClockwise()
+	return false
 }
 
-// RotatePieceCounter rotates the current piece counter-clockwise.
+// RotatePieceCounter rotates the current piece counter-clockwise using SRS wall kicks.
 func (gs *GameState) RotatePieceCounter() bool {
 	if gs.CurrentPiece == nil || gs.Paused || gs.GameOver {
 		return false
 	}
+	fromRot := gs.CurrentPiece.Rotation
 	gs.CurrentPiece.RotateCounterClockwise()
-	if !gs.isValidPosition(gs.CurrentPiece, gs.CurrentPiece.X, gs.CurrentPiece.Y) {
-		gs.CurrentPiece.RotateClockwise()
-		return false
+	toRot := gs.CurrentPiece.Rotation
+	kicks := gs.CurrentPiece.GetWallKicks(fromRot, toRot)
+	for _, kick := range kicks {
+		newX := gs.CurrentPiece.X + kick[0]
+		newY := gs.CurrentPiece.Y + kick[1]
+		if gs.isValidPosition(gs.CurrentPiece, newX, newY) {
+			gs.CurrentPiece.X = newX
+			gs.CurrentPiece.Y = newY
+			return true
+		}
 	}
-	return true
+	// All kicks failed — revert
+	gs.CurrentPiece.RotateClockwise()
+	return false
 }
 
 // HoldCurrentPiece swaps the current piece with the hold piece.
@@ -231,12 +251,10 @@ func (gs *GameState) UpdateClearAnimation() (completed bool) {
 
 		// All lines flashed? Now actually clear them all at once
 		if gs.ClearAnimIndex >= len(gs.ClearedLines) {
-			for _, line := range gs.ClearedLines {
-				gs.Board.ClearLine(line)
-			}
+			gs.Board.ClearLines(gs.ClearedLines)
 			gs.LinesCleared += len(gs.ClearedLines)
 			gs.UpdateScore(len(gs.ClearedLines))
-			gs.Level = gs.LinesCleared / 10 // Level up every 10 lines (official Game Boy)
+			gs.Level = gs.LinesCleared/10 + 1 // Level up every 10 lines (official Game Boy)
 			gs.ClearedLines = []int{}
 			gs.ClearAnimIndex = 0
 			gs.ClearAnimFrame = 0

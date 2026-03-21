@@ -336,9 +336,7 @@ func TestTwoPieceLookahead_Capability(t *testing.T) {
 	t.Logf("I-piece position before move: X=%d, Y=%d",
 		gameState.CurrentPiece.X, gameState.CurrentPiece.Y)
 
-	// The test documents current behavior - after fix, we'll verify AI sets up the Tetris
-	t.Log("NOTE: Current single-piece AI may not find optimal 2-piece Tetris setup")
-	t.Log("After 2-piece lookahead fix: AI should choose O-piece position enabling I-piece Tetris")
+	// Documents AI behavior for this specific board state
 }
 
 // TestTwoPieceLookahead_TetrisExecution verifies AI executes 4-line clears (Tetris)

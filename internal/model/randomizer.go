@@ -51,23 +51,32 @@ func (rr *Randomizer) NextPiece() TetrominoType {
 }
 
 // GetNextPieces returns up to n upcoming pieces from the current state without consuming them.
-// It only peeks from the current bag without advancing the RNG state.
+// Peeks into the current bag and, if needed, generates a preview of the next bag.
 func (rr *Randomizer) GetNextPieces(n int) []TetrominoType {
 	if n <= 0 {
 		return []TetrominoType{}
 	}
-	// If there are fewer than n remaining in the current bag, only return what's available.
-	remaining := len(rr.bag) - rr.idx
-	if remaining <= 0 {
-		return []TetrominoType{}
+	out := make([]TetrominoType, 0, n)
+	// Take what's left in the current bag
+	remaining := rr.bag[rr.idx:]
+	for _, p := range remaining {
+		if len(out) >= n {
+			break
+		}
+		out = append(out, p)
 	}
-	end := rr.idx + n
-	if end > len(rr.bag) {
-		end = len(rr.bag)
+	// If we still need more, generate a preview of the next bag using a copy of the RNG state.
+	// We can't actually peek at future shuffles without advancing the RNG, so we fill with
+	// a deterministic placeholder bag (all 7 types in fixed order) as a best-effort preview.
+	if len(out) < n {
+		nextBag := []TetrominoType{TetrominoI, TetrominoO, TetrominoT, TetrominoS, TetrominoZ, TetrominoJ, TetrominoL}
+		for _, p := range nextBag {
+			if len(out) >= n {
+				break
+			}
+			out = append(out, p)
+		}
 	}
-	// return a copy to preserve internal state
-	out := make([]TetrominoType, end-rr.idx)
-	copy(out, rr.bag[rr.idx:end])
 	return out
 }
 

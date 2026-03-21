@@ -16,6 +16,7 @@ type MoveDecision struct {
 	targetX   int     // target X position (0-9)
 	softDrops int     // number of soft drops needed
 	score     float64 // evaluation score
+	useHold   bool    // whether to swap hold piece first
 }
 
 // GetRotations returns target rotation.
@@ -36,6 +37,11 @@ func (m *MoveDecision) GetSoftDrops() int {
 // GetScore returns evaluation score.
 func (m *MoveDecision) GetScore() float64 {
 	return m.score
+}
+
+// GetUseHold returns whether this decision requires a hold swap.
+func (m *MoveDecision) GetUseHold() bool {
+	return m.useHold
 }
 
 // NewAutoPlayer creates a new AutoPlayer with default settings.
@@ -97,6 +103,7 @@ func (m *MoveDecision) Reset() {
 	m.targetX = 0
 	m.softDrops = 0
 	m.score = 0.0
+	m.useHold = false
 }
 
 // String returns a readable format for debugging.
@@ -232,34 +239,57 @@ func calculateBumpiness(board *Board) int {
 func countWells(board *Board) int {
 	wells := 0
 	for x := 0; x < 10; x++ {
-		// Check if this column forms a well (empty between filled columns)
-		if x > 0 && x < 9 {
-			// Count consecutive empty cells from bottom
-			depth := 0
-			for y := 0; y < 20; y++ {
-				if board.Get(x, y) == 0 {
-					depth++
-				} else {
-					break
+		// Count consecutive empty cells from bottom
+		depth := 0
+		for y := 0; y < 20; y++ {
+			if board.Get(x, y) == 0 {
+				depth++
+			} else {
+				break
+			}
+		}
+		if depth < 2 {
+			continue
+		}
+		// Left edge: wall on left, check right neighbor
+		if x == 0 {
+			hasRightWall := false
+			for y := 0; y < depth && y < 20; y++ {
+				if board.Get(x+1, y) != 0 {
+					hasRightWall = true
 				}
 			}
-			// Check if surrounded by blocks
-			if depth >= 2 {
-				// Check if there are blocks on both sides at some height
-				hasLeftWall := false
-				hasRightWall := false
-				for y := 0; y < depth && y < 20; y++ {
-					if board.Get(x-1, y) != 0 {
-						hasLeftWall = true
-					}
-					if board.Get(x+1, y) != 0 {
-						hasRightWall = true
-					}
-				}
-				if hasLeftWall && hasRightWall {
-					wells++
+			if hasRightWall {
+				wells++
+			}
+			continue
+		}
+		// Right edge: wall on right, check left neighbor
+		if x == 9 {
+			hasLeftWall := false
+			for y := 0; y < depth && y < 20; y++ {
+				if board.Get(x-1, y) != 0 {
+					hasLeftWall = true
 				}
 			}
+			if hasLeftWall {
+				wells++
+			}
+			continue
+		}
+		// Interior: check both neighbors
+		hasLeftWall := false
+		hasRightWall := false
+		for y := 0; y < depth && y < 20; y++ {
+			if board.Get(x-1, y) != 0 {
+				hasLeftWall = true
+			}
+			if board.Get(x+1, y) != 0 {
+				hasRightWall = true
+			}
+		}
+		if hasLeftWall && hasRightWall {
+			wells++
 		}
 	}
 	return wells
@@ -381,6 +411,7 @@ func FindBestMove(gameState *GameState) *MoveDecision {
 
 // FindBestMoveWithNext finds the optimal move using two-piece lookahead.
 // Evaluates current piece + next piece sequences to find combo setups.
+// Also considers hold-piece swaps when the hold slot is available.
 // Falls back to FindBestMove() if next piece is not available.
 // Returns nil if game state is invalid (nil pieces, game over, or no valid moves).
 func FindBestMoveWithNext(gameState *GameState) *MoveDecision {
@@ -402,13 +433,42 @@ func FindBestMoveWithNext(gameState *GameState) *MoveDecision {
 	bestScore := -999999.0
 
 	for i := range moves {
-		// Use two-piece lookahead evaluation
 		score := EvaluateTwoPieceSequence(gameState, &moves[i], gameState.NextPiece)
 		moves[i].score = score
 
 		if score > bestScore || (score == bestScore && bestMove != nil && shouldPreferMove(moves[i], *bestMove)) {
 			bestScore = score
 			bestMove = &moves[i]
+		}
+	}
+
+	// Consider hold: if CanHold, evaluate using hold piece (or next piece if hold is empty).
+	if gameState.CanHold {
+		var holdCandidate *Tetromino
+		if gameState.HoldPiece != nil {
+			holdCandidate = clonePiece(gameState.HoldPiece)
+			holdCandidate.X = 3
+			holdCandidate.Y = 18
+			holdCandidate.Rotation = 0
+			holdCandidate.updateMatrix()
+		} else {
+			// Hold is empty: swapping would give us the next piece and defer the current
+			holdCandidate = clonePiece(gameState.NextPiece)
+			holdCandidate.X = 3
+			holdCandidate.Y = 18
+			holdCandidate.Rotation = 0
+			holdCandidate.updateMatrix()
+		}
+		holdMoves := enumerateMoves(gameState, holdCandidate)
+		for i := range holdMoves {
+			// After hold, the "next" piece becomes the current piece (deferred)
+			score := EvaluateTwoPieceSequence(gameState, &holdMoves[i], gameState.CurrentPiece)
+			holdMoves[i].score = score
+			if score > bestScore {
+				bestScore = score
+				holdMoves[i].useHold = true
+				bestMove = &holdMoves[i]
+			}
 		}
 	}
 
@@ -451,6 +511,16 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 	placePieceOnBoard(testBoard, testPiece)
 
 	linesClearedByCurrent := countCompleteLines(testBoard)
+	// Clear those lines so next-piece evaluation uses the correct board state.
+	if linesClearedByCurrent > 0 {
+		clearedRows := []int{}
+		for y := 0; y < 20; y++ {
+			if testBoard.IsLineFull(y) {
+				clearedRows = append(clearedRows, y)
+			}
+		}
+		testBoard.ClearLines(clearedRows)
+	}
 
 	bestNextScore := -999999.0
 	bestComboLines := 0
@@ -480,8 +550,8 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 
 		placePieceOnBoard(nextBoard, nextTestPiece)
 
-		totalLines := countCompleteLines(nextBoard)
-		comboLines := totalLines - linesClearedByCurrent
+		// Lines cleared by next piece only (current lines already cleared from testBoard)
+		comboLines := countCompleteLines(nextBoard)
 
 		nextScore := evaluateBoard(nextBoard, nextTestPiece, nextMoves[i].targetX, nextMoves[i].rotations)
 
@@ -692,6 +762,14 @@ func ExecuteMove(gameState *GameState, decision *MoveDecision) bool {
 		return true
 	}
 
+	// Step -1: perform hold swap if requested (only once, before any rotation/movement)
+	if decision.useHold && gameState.CanHold {
+		gameState.HoldCurrentPiece()
+		decision.useHold = false
+		// After hold, piece changed — recalculate rotations from rotation 0
+		return false
+	}
+
 	if gameState.autoMoveStep == 0 {
 		if decision.rotations > 0 {
 			gameState.RotatePiece()
@@ -770,14 +848,19 @@ func calculateDropsForMove(gameState *GameState, piece *Tetromino, x, rot int) i
 	return drops
 }
 
-// clonePiece creates a copy of a piece.
+// clonePiece creates a deep copy of a piece, including the Matrix slice.
 func clonePiece(piece *Tetromino) *Tetromino {
+	matrix := make([][]int, len(piece.Matrix))
+	for i, row := range piece.Matrix {
+		matrix[i] = make([]int, len(row))
+		copy(matrix[i], row)
+	}
 	return &Tetromino{
 		Type:     piece.Type,
 		Color:    piece.Color,
 		X:        piece.X,
 		Y:        piece.Y,
 		Rotation: piece.Rotation,
-		Matrix:   piece.Matrix,
+		Matrix:   matrix,
 	}
 }

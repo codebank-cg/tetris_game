@@ -1,6 +1,7 @@
 package audio
 
 import (
+	"math"
 	"sync"
 	"time"
 
@@ -22,6 +23,8 @@ type MusicPlayer struct {
 	enabled  bool
 	toggleCh chan bool
 	init     sync.Once
+	stopped  bool
+	mu       sync.Mutex
 }
 
 // Korobeiniki (original Game Boy Tetris theme)
@@ -132,7 +135,7 @@ func (t *ToneStreamer) Stream(samples [][2]float64) (n int, ok bool) {
 			envelope = float64(t.totalSamples-t.samplePos) / float64(release)
 		}
 
-		sample := amplitude * envelope * sin(phase)
+		sample := amplitude * envelope * math.Sin(phase)
 		samples[i] = [2]float64{sample, sample}
 		t.samplePos++
 	}
@@ -158,17 +161,6 @@ func (t *ToneStreamer) Position() int {
 func (t *ToneStreamer) Seek(p int) error {
 	t.samplePos = int64(p)
 	return nil
-}
-
-// sin approximates sine function
-func sin(x float64) float64 {
-	for x > 3.14159265359 {
-		x -= 2 * 3.14159265359
-	}
-	for x < -3.14159265359 {
-		x += 2 * 3.14159265359
-	}
-	return x - x*x*x/6 + x*x*x*x*x/120
 }
 
 // NewMusicPlayer creates a new music player
@@ -228,9 +220,23 @@ func (mp *MusicPlayer) PlayKorobeiniki() {
 	}
 }
 
-// Stop stops the music playback
+// Stop stops the music playback. Safe to call multiple times.
 func (mp *MusicPlayer) Stop() {
-	close(mp.done)
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	if !mp.stopped {
+		mp.stopped = true
+		close(mp.done)
+	}
+}
+
+// Restart resets the player so PlayKorobeiniki can be called again.
+func (mp *MusicPlayer) Restart() {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
+	mp.done = make(chan bool, 1)
+	mp.enabled = true
+	mp.stopped = false
 }
 
 // createKorobeinikiMelody creates the melody sequence with specified tempo
@@ -263,9 +269,6 @@ func (mp *MusicPlayer) PlayLineClearBeep() {
 		Volume:   0.3,
 	}
 
-	// Play the beep
+	// Play the beep asynchronously; the speaker handles the audio lifecycle.
 	speaker.Play(volumeCtrl)
-
-	// Wait for beep to finish
-	time.Sleep(beepDuration)
 }
