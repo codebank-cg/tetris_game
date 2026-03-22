@@ -1,0 +1,1 @@
+# Tetris Game Documentation (placeholders)
