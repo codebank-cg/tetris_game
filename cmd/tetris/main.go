@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -19,6 +20,7 @@ func main() {
 	game := model.NewGameState()
 	autoPlayer := model.NewAutoPlayer()
 	ghostEnabled := false
+	var restartGen int32
 
 	colors := map[int]tcell.Color{
 		0: tcell.ColorDefault,
@@ -32,6 +34,7 @@ func main() {
 	}
 
 	gameBoard := tview.NewBox()
+	gameBoard.SetBackgroundColor(tcell.ColorBlack)
 	gameBoard.SetBorder(true)
 	gameBoard.SetBorderAttributes(tcell.AttrBold)
 	gameBoard.SetTitle(" TETRIS ").SetTitleAlign(tview.AlignCenter)
@@ -113,6 +116,7 @@ func main() {
 	})
 
 	nextBox := tview.NewBox()
+	nextBox.SetBackgroundColor(tcell.ColorBlack)
 	nextBox.SetBorder(true)
 	nextBox.SetBorderAttributes(tcell.AttrBold)
 	nextBox.SetTitle(" NEXT ").SetTitleAlign(tview.AlignCenter)
@@ -181,6 +185,8 @@ func main() {
 			"[#FFFF00]↓[white] Soft Drop\n" +
 			"[#FFFF00]Space[white] Hard Drop\n" +
 			"[#FFFF00]G[white] Ghost[white] Mode\n" +
+			"[#FFFF00]A[white] Auto-Play\n" +
+			"[#FFFF00]M[white] Music\n" +
 			"[#FFFF00]P[white] Pause\n" +
 			"[#FFFF00]R[white] Restart\n" +
 			"[#FFFF00]Q[white] Quit",
@@ -229,9 +235,9 @@ func main() {
 	rightPanel.SetBackgroundColor(tcell.ColorBlack)
 
 	rightPanelWithSpacing := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(rightPanel, 22, 0, false).
-		AddItem(tview.NewBox(), 0, 1, false)
+		AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorBlack), 0, 1, false)
 	rightPanelWithSpacing.SetBackgroundColor(tcell.ColorBlack)
 
 	mainLayout := tview.NewFlex().SetDirection(tview.FlexColumn).
@@ -241,9 +247,9 @@ func main() {
 	mainLayout.SetBackgroundColor(tcell.ColorBlack)
 
 	mainLayoutWithSpacing := tview.NewFlex().SetDirection(tview.FlexRow).
-		AddItem(tview.NewBox(), 0, 1, false).
+		AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorBlack), 0, 1, false).
 		AddItem(mainLayout, 22, 0, false).
-		AddItem(tview.NewBox(), 0, 1, false)
+		AddItem(tview.NewBox().SetBackgroundColor(tcell.ColorBlack), 0, 1, false)
 	mainLayoutWithSpacing.SetBackgroundColor(tcell.ColorBlack)
 
 	app.SetRoot(mainLayoutWithSpacing, true).EnableMouse(false)
@@ -274,6 +280,9 @@ func main() {
 					autoParamsText.SetText("")
 				}
 				return nil
+			case 'm', 'M':
+				musicPlayer.Toggle()
+				return nil
 			case 'z', 'Z':
 				if !game.Paused && !game.GameOver {
 					game.RotatePieceCounter()
@@ -297,10 +306,13 @@ func main() {
 				return nil
 			case 'p', 'P':
 				game.Paused = !game.Paused
-				app.Draw()
 				return nil
 			case 'r', 'R':
 				game = model.NewGameState()
+				atomic.AddInt32(&restartGen, 1)
+				musicPlayer.Start()
+				lastDrop = time.Now()
+				lastActionTime = time.Now()
 				if autoPlayer.IsEnabled() {
 					autoText.SetText("AUTO-PLAY: ON ")
 					speedText.SetText(fmt.Sprintf("SPEED:   %d", autoPlayer.GetSpeedLevel()))
@@ -350,9 +362,23 @@ func main() {
 		lastAutoParams := ""
 		lastAutoPlayerState := false
 		currentDecision := (*model.MoveDecision)(nil)
+		var lastRestartGen int32
 
 		for {
 			boardChanged := false
+
+			// Detect restart: reset stale per-game state
+			if gen := atomic.LoadInt32(&restartGen); gen != lastRestartGen {
+				lastRestartGen = gen
+				gameOverDetected = false
+				currentDecision = nil
+				lastPiecePos = 0
+				lastScore = 0
+				lastLevel = 0
+				lastLines = 0
+				lastAutoParams = ""
+				boardChanged = true
+			}
 
 			if autoPlayer.IsEnabled() != lastAutoPlayerState {
 				lastAutoPlayerState = autoPlayer.IsEnabled()
@@ -372,7 +398,14 @@ func main() {
 						currentDecision = model.FindBestMoveWithNext(game)
 					}
 					if currentDecision != nil {
-						if model.ExecuteMove(game, currentDecision) {
+						done := model.ExecuteMove(game, currentDecision)
+						// At max speed, drain all remaining drop steps in one tick
+						if !done && autoPlayer.GetSpeedLevel() == 5 && model.IsInDropPhase(game) {
+							for !done {
+								done = model.ExecuteMove(game, currentDecision)
+							}
+						}
+						if done {
 							currentDecision = nil
 						}
 						lastActionTime = time.Now()
@@ -393,9 +426,9 @@ func main() {
 
 			if game.IsClearAnimating() {
 				linesCleared := game.UpdateClearAnimation()
+				boardChanged = true
 				if linesCleared {
 					musicPlayer.PlayLineClearBeep()
-					boardChanged = true
 				}
 			}
 
@@ -442,6 +475,8 @@ func main() {
 						"[#FFFF00]↓[white] Soft Drop\n"+
 						"[#FFFF00]Space[white] Hard Drop\n"+
 						"[#FFFF00]G[white] Ghost[white] Mode\n"+
+						"[#FFFF00]A[white] Auto-Play\n"+
+						"[#FFFF00]M[white] Music\n"+
 						"[#FFFF00]P[white] Pause\n"+
 						"[#FFFF00]R[white] Restart\n"+
 						"[#FFFF00]Q[white] Quit",

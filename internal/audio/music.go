@@ -18,7 +18,7 @@ type Note struct {
 
 // MusicPlayer handles background music playback
 type MusicPlayer struct {
-	done     chan bool
+	mu       sync.Mutex
 	enabled  bool
 	toggleCh chan bool
 	init     sync.Once
@@ -174,7 +174,6 @@ func sin(x float64) float64 {
 // NewMusicPlayer creates a new music player
 func NewMusicPlayer() *MusicPlayer {
 	return &MusicPlayer{
-		done:     make(chan bool, 1),
 		enabled:  true,
 		toggleCh: make(chan bool, 1),
 	}
@@ -182,18 +181,55 @@ func NewMusicPlayer() *MusicPlayer {
 
 // Toggle switches music on/off
 func (mp *MusicPlayer) Toggle() {
+	mp.mu.Lock()
+	mp.enabled = !mp.enabled
+	state := mp.enabled
+	mp.mu.Unlock()
 	select {
-	case mp.toggleCh <- !mp.enabled:
+	case mp.toggleCh <- state:
+	default:
+	}
+}
+
+// Stop pauses music playback (e.g. on game over). Safe to call multiple times.
+func (mp *MusicPlayer) Stop() {
+	mp.mu.Lock()
+	if !mp.enabled {
+		mp.mu.Unlock()
+		return
+	}
+	mp.enabled = false
+	mp.mu.Unlock()
+	select {
+	case mp.toggleCh <- false:
+	default:
+	}
+}
+
+// Start resumes music playback (e.g. on game restart).
+func (mp *MusicPlayer) Start() {
+	mp.mu.Lock()
+	if mp.enabled {
+		mp.mu.Unlock()
+		return
+	}
+	mp.enabled = true
+	mp.mu.Unlock()
+	select {
+	case mp.toggleCh <- true:
 	default:
 	}
 }
 
 // IsEnabled returns whether music is currently playing
 func (mp *MusicPlayer) IsEnabled() bool {
+	mp.mu.Lock()
+	defer mp.mu.Unlock()
 	return mp.enabled
 }
 
-// PlayKorobeiniki plays the Korobeiniki theme with infinite loop
+// PlayKorobeiniki plays the Korobeiniki theme with infinite loop.
+// The goroutine runs for the lifetime of the process; use Stop/Start to pause/resume.
 func (mp *MusicPlayer) PlayKorobeiniki() {
 	mp.init.Do(func() {
 		speaker.Init(beep.SampleRate(44100), 44100/2) // 500ms buffer
@@ -214,23 +250,12 @@ func (mp *MusicPlayer) PlayKorobeiniki() {
 	ctrl := &beep.Ctrl{Streamer: volumeCtrl, Paused: false}
 	speaker.Play(ctrl)
 
-	// Handle toggle signals
-	for {
-		select {
-		case <-mp.done:
-			return
-		case enabled := <-mp.toggleCh:
-			mp.enabled = enabled
-			speaker.Lock()
-			ctrl.Paused = !enabled
-			speaker.Unlock()
-		}
+	// Handle toggle signals for the lifetime of the process
+	for enabled := range mp.toggleCh {
+		speaker.Lock()
+		ctrl.Paused = !enabled
+		speaker.Unlock()
 	}
-}
-
-// Stop stops the music playback
-func (mp *MusicPlayer) Stop() {
-	close(mp.done)
 }
 
 // createKorobeinikiMelody creates the melody sequence with specified tempo

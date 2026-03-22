@@ -452,6 +452,13 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 
 	linesClearedByCurrent := countCompleteLines(testBoard)
 
+	// Clear complete lines from testBoard so the next piece is placed on the correct board state.
+	for y := 19; y >= 0; y-- {
+		if testBoard.IsLineFull(y) {
+			testBoard.ClearLine(y)
+		}
+	}
+
 	bestNextScore := -999999.0
 	bestComboLines := 0
 	nextMoves := enumerateMovesForBoard(testBoard, nextPiece)
@@ -480,8 +487,7 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 
 		placePieceOnBoard(nextBoard, nextTestPiece)
 
-		totalLines := countCompleteLines(nextBoard)
-		comboLines := totalLines - linesClearedByCurrent
+		comboLines := countCompleteLines(nextBoard)
 
 		nextScore := evaluateBoard(nextBoard, nextTestPiece, nextMoves[i].targetX, nextMoves[i].rotations)
 
@@ -507,7 +513,7 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 		}
 	}
 
-	currentScore := evaluateBoard(testBoard, testPiece, currentMove.targetX, currentMove.rotations)
+	currentScore := evaluateBoard(testBoard, testPiece, currentMove.targetX, currentMove.rotations) + evaluateLineClears(linesClearedByCurrent)
 
 	totalScore := currentScore*0.4 + bestNextScore*0.6
 

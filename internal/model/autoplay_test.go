@@ -708,9 +708,11 @@ func TestEvaluateTwoPieceSequence_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("NoValidNextMoves", func(t *testing.T) {
-		// Fill board completely except 1 row
-		for y := 0; y < 19; y++ {
-			for x := 0; x < 10; x++ {
+		// Fill board with partial rows (no complete rows, so no clears) blocking top rows.
+		// Leave column 0 empty to prevent full-line clears, but stack high enough
+		// to block the next piece from spawning.
+		for y := 0; y < 20; y++ {
+			for x := 1; x < 10; x++ {
 				gameState.Board.Set(x, y, 1)
 			}
 		}
