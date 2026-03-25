@@ -10,6 +10,7 @@ type GameState struct {
 	Score          int
 	Level          int
 	LinesCleared   int
+	TetrisCount    int
 	PieceCount     int
 	CanHold        bool
 	GameOver       bool
@@ -231,6 +232,9 @@ func (gs *GameState) UpdateClearAnimation() (completed bool) {
 
 		// All lines flashed? Now actually clear them all at once
 		if gs.ClearAnimIndex >= len(gs.ClearedLines) {
+			if len(gs.ClearedLines) == 4 {
+				gs.TetrisCount++
+			}
 			for _, line := range gs.ClearedLines {
 				gs.Board.ClearLine(line)
 			}
@@ -291,10 +295,16 @@ func (gs *GameState) Reset() {
 	gs.Score = 0
 	gs.Level = 1
 	gs.LinesCleared = 0
+	gs.TetrisCount = 0
 	gs.PieceCount = 0
 	gs.GameOver = false
 	gs.Paused = false
+	gs.CanHold = true
 	gs.HoldPiece = nil
+	gs.ClearedLines = []int{}
+	gs.ClearAnimFrame = 0
+	gs.ClearAnimIndex = 0
+	gs.autoMoveStep = 0
 	gs.NextPiece = NewTetromino(gs.Randomizer.NextPiece())
 	gs.spawnPiece()
 }

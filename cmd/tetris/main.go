@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"sync/atomic"
 	"time"
@@ -12,7 +13,20 @@ import (
 )
 
 func main() {
+	showdown := flag.Bool("showdown", false, "launch AI showdown mode")
+	botA := flag.String("bot-a", "aggressive", "preset for Bot A (aggressive/conservative/balanced/speedrun/chaos)")
+	botB := flag.String("bot-b", "conservative", "preset for Bot B (aggressive/conservative/balanced/speedrun/chaos)")
+	flag.Parse()
+
 	app := tview.NewApplication()
+
+	if *showdown {
+		runShowdownMode(app, *botA, *botB)
+		if err := app.Run(); err != nil {
+			panic(err)
+		}
+		return
+	}
 
 	musicPlayer := audio.NewMusicPlayer()
 	go musicPlayer.PlayKorobeiniki()
@@ -39,79 +53,7 @@ func main() {
 	gameBoard.SetBorderAttributes(tcell.AttrBold)
 	gameBoard.SetTitle(" TETRIS ").SetTitleAlign(tview.AlignCenter)
 	gameBoard.SetDrawFunc(func(screen tcell.Screen, x, y, width, height int) (int, int, int, int) {
-		boardX := x + 1
-		boardY := y + 1
-
-		for row := 0; row < 20; row++ {
-			screenY := boardY + (19 - row)
-			for col := 0; col < 10; col++ {
-				cellX := boardX + col*2
-				color := game.Board.Get(col, row)
-				if color != 0 {
-					baseColor := colors[color]
-					screen.SetContent(cellX, screenY, '█', nil, tcell.StyleDefault.Foreground(baseColor).Background(tcell.ColorBlack))
-					screen.SetContent(cellX+1, screenY, '█', nil, tcell.StyleDefault.Foreground(baseColor).Background(tcell.ColorBlack))
-				}
-			}
-		}
-
-		if game.CurrentPiece != nil && !game.GameOver && ghostEnabled && !autoPlayer.IsEnabled() {
-			ghostY := game.GetGhostY()
-			if ghostY >= 0 && ghostY < game.CurrentPiece.Y && ghostY < 20 {
-				matrix := game.CurrentPiece.GetMatrix()
-				if matrix != nil {
-					ghostStyle := tcell.StyleDefault.Foreground(tcell.GetColor("#90EE90")).Background(tcell.ColorBlack)
-					for row := 0; row < 4; row++ {
-						for col := 0; col < 4; col++ {
-							if matrix[row][col] != 0 {
-								pieceY := ghostY - row
-								if pieceY >= 0 && pieceY < 20 {
-									bx := boardX + (game.CurrentPiece.X+col)*2
-									by := boardY + (19 - pieceY)
-									screen.SetContent(bx, by, '░', nil, ghostStyle)
-									screen.SetContent(bx+1, by, '░', nil, ghostStyle)
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-
-		if game.CurrentPiece != nil && !game.GameOver {
-			matrix := game.CurrentPiece.GetMatrix()
-			pieceStyle := tcell.StyleDefault.Foreground(colors[game.CurrentPiece.Color]).Background(tcell.ColorBlack)
-			for row := 0; row < 4; row++ {
-				for col := 0; col < 4; col++ {
-					if matrix[row][col] != 0 {
-						bx := boardX + (game.CurrentPiece.X+col)*2
-						by := boardY + (19 - (game.CurrentPiece.Y - row))
-						if by >= boardY && by < boardY+20 && bx >= boardX && bx < boardX+20 {
-							screen.SetContent(bx, by, '█', nil, pieceStyle)
-							screen.SetContent(bx+1, by, '█', nil, pieceStyle)
-						}
-					}
-				}
-			}
-		}
-
-		if game.GameOver {
-			gameOverText := "GAME OVER"
-			startX := boardX + (20-len(gameOverText))/2
-			startY := boardY + 9
-			for i, ch := range gameOverText {
-				style := tcell.StyleDefault.Foreground(tcell.ColorRed).Background(tcell.ColorBlack).Bold(true)
-				screen.SetContent(startX+i, startY, ch, nil, style)
-			}
-
-			restartText := "Press R"
-			startX = boardX + (20-len(restartText))/2
-			for i, ch := range restartText {
-				style := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(tcell.ColorBlack)
-				screen.SetContent(startX+i, startY+2, ch, nil, style)
-			}
-		}
-
+		drawBoard(screen, x, y, game, colors, ghostEnabled && !autoPlayer.IsEnabled())
 		return x, y, width, height
 	})
 
@@ -395,7 +337,7 @@ func main() {
 				}
 				if time.Since(lastActionTime) > time.Duration(delay)*time.Millisecond {
 					if currentDecision == nil {
-						currentDecision = model.FindBestMoveWithNext(game)
+						currentDecision = model.FindBestMoveWithNext(game, model.DefaultWeights())
 					}
 					if currentDecision != nil {
 						done := model.ExecuteMove(game, currentDecision)
@@ -447,7 +389,7 @@ func main() {
 			}
 
 			if autoPlayer.IsEnabled() && !game.GameOver && game.CurrentPiece != nil {
-				decision := model.FindBestMoveWithNext(game)
+				decision := model.FindBestMoveWithNext(game, model.DefaultWeights())
 				if decision != nil {
 					autoParams := fmt.Sprintf("TARGET:  X:%2d  R:%d\nSCORE:   %.1f",
 						decision.GetTargetX(), decision.GetRotations(), decision.GetScore())

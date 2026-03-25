@@ -7,7 +7,7 @@ func TestAutoPlay_Survival10Pieces(t *testing.T) {
 
 	piecesPlaced := 0
 	for piecesPlaced < 10 && !gameState.GameOver {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -28,7 +28,7 @@ func TestAutoPlay_Survival50Pieces(t *testing.T) {
 
 	piecesPlaced := 0
 	for piecesPlaced < 50 && !gameState.GameOver {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -59,7 +59,7 @@ func TestAutoPlay_ClearsLines(t *testing.T) {
 	targetPieces := 100
 
 	for piecesPlaced < targetPieces && !gameState.GameOver {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -88,7 +88,7 @@ func TestAutoPlay_AllPieceTypes(t *testing.T) {
 	for piecesPlaced < 70 && !gameState.GameOver {
 		pieceTypesSeen[gameState.NextPiece.Type] = true
 
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -124,7 +124,7 @@ func TestAutoPlay_SpeedChanges(t *testing.T) {
 
 	for level := 1; level <= 5; level++ {
 		for i := 0; i < 5 && !gameState.GameOver; i++ {
-			decision := FindBestMove(gameState)
+			decision := FindBestMove(gameState, DefaultWeights())
 			if decision == nil {
 				break
 			}
@@ -146,7 +146,7 @@ func TestAutoPlay_PauseResume(t *testing.T) {
 	gameState := NewGameState()
 
 	for i := 0; i < 5; i++ {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -171,7 +171,7 @@ func TestAutoPlay_PauseResume(t *testing.T) {
 	}
 
 	for i := 0; i < 5; i++ {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -193,7 +193,7 @@ func TestAutoPlay_NoCrashOnEdgeCases(t *testing.T) {
 	}()
 
 	for i := 0; i < 200 && !gameState.GameOver; i++ {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			continue
 		}
@@ -217,7 +217,7 @@ func TestAutoPlay_BaselineLineClearRate(t *testing.T) {
 	targetPieces := 100
 
 	for piecesPlaced < targetPieces && !gameState.GameOver {
-		decision := FindBestMove(gameState)
+		decision := FindBestMove(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -244,20 +244,22 @@ func TestAutoPlay_BaselineLineClearRate(t *testing.T) {
 
 func BenchmarkFindBestMove(b *testing.B) {
 	gameState := NewGameState()
+	weights := DefaultWeights()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		FindBestMove(gameState)
+		FindBestMove(gameState, weights)
 	}
 }
 
 func BenchmarkEvaluateBoard(b *testing.B) {
 	board := NewBoard()
 	piece := NewTetromino(TetrominoI)
+	weights := DefaultWeights()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		evaluateBoard(board, piece, 5, 0)
+		evaluateBoard(board, piece, 5, 0, weights)
 	}
 }
 
@@ -269,7 +271,7 @@ func BenchmarkAutoPlayGame(b *testing.B) {
 
 		piecesPlaced := 0
 		for piecesPlaced < 50 && !gameState.GameOver {
-			decision := FindBestMove(gameState)
+			decision := FindBestMove(gameState, DefaultWeights())
 			if decision == nil {
 				break
 			}
@@ -309,7 +311,7 @@ func TestTwoPieceLookahead_Capability(t *testing.T) {
 
 	// Current single-piece AI will likely place O-piece somewhere safe
 	// but won't see the 4-line Tetris setup possible with O+I combo
-	decision := FindBestMove(gameState)
+	decision := FindBestMove(gameState, DefaultWeights())
 
 	if decision == nil {
 		t.Fatal("FindBestMove() returned nil")
@@ -351,7 +353,7 @@ func TestTwoPieceLookahead_TetrisExecution(t *testing.T) {
 	// Run for 200 pieces to increase chances of Tetris opportunities
 	for piecesPlaced < 200 && !gameState.GameOver {
 		linesBefore := gameState.LinesCleared
-		decision := FindBestMoveWithNext(gameState)
+		decision := FindBestMoveWithNext(gameState, DefaultWeights())
 		if decision == nil {
 			break
 		}
@@ -404,7 +406,7 @@ func TestFindBestMoveWithNext_FindsCombo(t *testing.T) {
 	// I-piece next (will clear Tetris)
 	gameState.NextPiece = NewTetromino(TetrominoI)
 
-	decision := FindBestMoveWithNext(gameState)
+	decision := FindBestMoveWithNext(gameState, DefaultWeights())
 	if decision == nil {
 		t.Fatal("FindBestMoveWithNext() returned nil")
 	}
