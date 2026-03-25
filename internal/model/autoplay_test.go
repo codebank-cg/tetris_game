@@ -226,8 +226,8 @@ func TestGetAggregateHeight(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := getAggregateHeight(tt.setupFn()); got != tt.want {
-				t.Errorf("getAggregateHeight() = %d, want %d", got, tt.want)
+			if got := GetAggregateHeight(tt.setupFn()); got != tt.want {
+				t.Errorf("GetAggregateHeight() = %d, want %d", got, tt.want)
 			}
 		})
 	}
@@ -297,8 +297,8 @@ func TestCountHoles(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := countHoles(tt.setupFn()); got != tt.wantHoles {
-				t.Errorf("countHoles() = %d, want %d", got, tt.wantHoles)
+			if got := CountHoles(tt.setupFn()); got != tt.wantHoles {
+				t.Errorf("CountHoles() = %d, want %d", got, tt.wantHoles)
 			}
 		})
 	}
@@ -319,8 +319,8 @@ func TestCalculateBumpiness(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			b := createBoardWithHeights(tt.colHeights)
-			if got := calculateBumpiness(b); got != tt.wantBumpiness {
-				t.Errorf("calculateBumpiness() = %d, want %d", got, tt.wantBumpiness)
+			if got := CalculateBumpiness(b); got != tt.wantBumpiness {
+				t.Errorf("CalculateBumpiness() = %d, want %d", got, tt.wantBumpiness)
 			}
 		})
 	}
@@ -393,7 +393,8 @@ func TestEvalWells(t *testing.T) {
 }
 
 func TestGetWeights_SetWeights(t *testing.T) {
-	weights := GetWeights()
+	ap := NewAutoPlayer()
+	weights := ap.GetWeights()
 
 	expectedKeys := []string{"aggregateHeight", "holes", "bumpiness", "wells"}
 	for _, key := range expectedKeys {
@@ -402,31 +403,27 @@ func TestGetWeights_SetWeights(t *testing.T) {
 		}
 	}
 
-	originalWeights := GetWeights()
-
 	newWeights := map[string]float64{
 		"aggregateHeight": -1.0,
 		"holes":           -0.5,
 		"bumpiness":       -0.3,
 		"wells":           -0.2,
 	}
-	SetWeights(newWeights)
-	got := GetWeights()
+	ap.SetWeights(newWeights)
+	got := ap.GetWeights()
 
 	for key, want := range newWeights {
 		if got[key] != want {
 			t.Errorf("SetWeights(%s) = %f, want %f", key, got[key], want)
 		}
 	}
-
-	SetWeights(originalWeights)
 }
 
 func TestEvaluateBoard(t *testing.T) {
 	board := createBoardWithHeights([10]int{5, 5, 5, 5, 5, 5, 5, 5, 5, 5})
 	piece := NewTetromino(TetrominoI)
 
-	score := evaluateBoard(board, piece, 5, 0)
+	score := evaluateBoard(board, piece, 5, 0, DefaultWeights())
 
 	if score == 0 {
 		t.Error("evaluateBoard() should return non-zero score")
@@ -437,21 +434,16 @@ func TestEvaluateBoard_WeightImpact(t *testing.T) {
 	board := createBoardWithHeights([10]int{5, 5, 5, 5, 5, 5, 5, 5, 5, 5})
 	piece := NewTetromino(TetrominoI)
 
-	originalWeights := GetWeights()
+	baseline := evaluateBoard(board, piece, 5, 0, DefaultWeights())
 
-	baseline := evaluateBoard(board, piece, 5, 0)
-
-	testWeights := GetWeights()
+	testWeights := DefaultWeights()
 	testWeights["aggregateHeight"] = 0
-	SetWeights(testWeights)
 
-	modified := evaluateBoard(board, piece, 5, 0)
+	modified := evaluateBoard(board, piece, 5, 0, testWeights)
 
 	if baseline == modified {
 		t.Error("Changing weights should affect score")
 	}
-
-	SetWeights(originalWeights)
 }
 
 func TestEnumerateMoves(t *testing.T) {
@@ -502,7 +494,7 @@ func TestEnumerateMoves_AllPieceTypes(t *testing.T) {
 func TestFindBestMove(t *testing.T) {
 	gameState := NewGameState()
 
-	decision := FindBestMove(gameState)
+	decision := FindBestMove(gameState, DefaultWeights())
 
 	if decision == nil {
 		t.Fatal("FindBestMove() returned nil on empty board")
@@ -516,9 +508,9 @@ func TestFindBestMove(t *testing.T) {
 func TestFindBestMove_Determinism(t *testing.T) {
 	gameState := NewGameState()
 
-	decision1 := FindBestMove(gameState)
-	decision2 := FindBestMove(gameState)
-	decision3 := FindBestMove(gameState)
+	decision1 := FindBestMove(gameState, DefaultWeights())
+	decision2 := FindBestMove(gameState, DefaultWeights())
+	decision3 := FindBestMove(gameState, DefaultWeights())
 
 	if decision1.targetX != decision2.targetX || decision2.targetX != decision3.targetX {
 		t.Error("FindBestMove() should be deterministic")
@@ -583,7 +575,7 @@ func TestEvaluateLineClears_ExponentialBonus(t *testing.T) {
 // properly incentivize multi-line clears (especially Tetris/4-line).
 // After fix: Uses exponential line-clear bonus for accurate analysis.
 func TestWeightAnalysis_TetrisIncentive(t *testing.T) {
-	weights := GetWeights()
+	weights := DefaultWeights()
 
 	t.Log("Current heuristic weights:")
 	for k, v := range weights {
@@ -634,7 +626,7 @@ func TestEvaluateTwoPieceSequence_Basic(t *testing.T) {
 		softDrops: 10,
 	}
 
-	score := EvaluateTwoPieceSequence(gameState, decision, gameState.NextPiece)
+	score := EvaluateTwoPieceSequence(gameState, decision, gameState.NextPiece, DefaultWeights())
 
 	if score == -999999.0 {
 		t.Error("EvaluateTwoPieceSequence() should return valid score for empty board")
@@ -671,7 +663,7 @@ func TestEvaluateTwoPieceSequence_ComboBonus(t *testing.T) {
 		softDrops: 0,
 	}
 
-	score := EvaluateTwoPieceSequence(gameState, decision, nextPiece)
+	score := EvaluateTwoPieceSequence(gameState, decision, nextPiece, DefaultWeights())
 
 	t.Logf("Combo setup score (O+I for Tetris): %.2f", score)
 
@@ -687,21 +679,21 @@ func TestEvaluateTwoPieceSequence_EdgeCases(t *testing.T) {
 	nextPiece := NewTetromino(TetrominoI)
 
 	t.Run("NilGameState", func(t *testing.T) {
-		score := EvaluateTwoPieceSequence(nil, decision, nextPiece)
+		score := EvaluateTwoPieceSequence(nil, decision, nextPiece, DefaultWeights())
 		if score != -999999.0 {
 			t.Errorf("Expected -999999.0 for nil gameState, got %.2f", score)
 		}
 	})
 
 	t.Run("NilDecision", func(t *testing.T) {
-		score := EvaluateTwoPieceSequence(gameState, nil, nextPiece)
+		score := EvaluateTwoPieceSequence(gameState, nil, nextPiece, DefaultWeights())
 		if score != -999999.0 {
 			t.Errorf("Expected -999999.0 for nil decision, got %.2f", score)
 		}
 	})
 
 	t.Run("NilNextPiece", func(t *testing.T) {
-		score := EvaluateTwoPieceSequence(gameState, decision, nil)
+		score := EvaluateTwoPieceSequence(gameState, decision, nil, DefaultWeights())
 		if score != -999999.0 {
 			t.Errorf("Expected -999999.0 for nil nextPiece, got %.2f", score)
 		}
@@ -716,7 +708,7 @@ func TestEvaluateTwoPieceSequence_EdgeCases(t *testing.T) {
 				gameState.Board.Set(x, y, 1)
 			}
 		}
-		score := EvaluateTwoPieceSequence(gameState, decision, nextPiece)
+		score := EvaluateTwoPieceSequence(gameState, decision, nextPiece, DefaultWeights())
 		if score != -999999.0 {
 			t.Errorf("Expected -999999.0 for no valid moves, got %.2f", score)
 		}
@@ -821,10 +813,11 @@ func TestIsValidPositionForBoard(t *testing.T) {
 
 func BenchmarkFindBestMoveWithNext(b *testing.B) {
 	gameState := NewGameState()
+	weights := DefaultWeights()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		FindBestMoveWithNext(gameState)
+		FindBestMoveWithNext(gameState, weights)
 	}
 }
 
@@ -836,10 +829,11 @@ func BenchmarkEvaluateTwoPieceSequence(b *testing.B) {
 		softDrops: 10,
 	}
 	nextPiece := NewTetromino(TetrominoI)
+	weights := DefaultWeights()
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		EvaluateTwoPieceSequence(gameState, decision, nextPiece)
+		EvaluateTwoPieceSequence(gameState, decision, nextPiece, weights)
 	}
 }
 
@@ -850,9 +844,10 @@ func TestTwoPieceLookahead_NoExcessiveAllocations(t *testing.T) {
 		targetX:   5,
 		softDrops: 10,
 	}
+	weights := DefaultWeights()
 
 	allocs := testing.AllocsPerRun(100, func() {
-		EvaluateTwoPieceSequence(gameState, decision, gameState.NextPiece)
+		EvaluateTwoPieceSequence(gameState, decision, gameState.NextPiece, weights)
 	})
 
 	// Two-piece lookahead allocates boards for simulation

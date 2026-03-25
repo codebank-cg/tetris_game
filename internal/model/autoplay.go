@@ -4,10 +4,11 @@ import "fmt"
 
 // AutoPlayer represents the autonomous Tetris player AI.
 type AutoPlayer struct {
-	enabled        bool          // is auto-play active
-	speedLevel     int           // 1-5 speed setting
-	targetDecision *MoveDecision // current target move
-	moveIndex      int           // current step in move execution
+	enabled        bool             // is auto-play active
+	speedLevel     int              // 1-5 speed setting
+	targetDecision *MoveDecision    // current target move
+	moveIndex      int              // current step in move execution
+	weights        map[string]float64 // heuristic weights for board evaluation
 }
 
 // MoveDecision represents the AI's decision for piece placement.
@@ -38,11 +39,38 @@ func (m *MoveDecision) GetScore() float64 {
 	return m.score
 }
 
+// DefaultWeights returns the default heuristic weights for board evaluation.
+func DefaultWeights() map[string]float64 {
+	return map[string]float64{
+		"aggregateHeight": -0.10,
+		"holes":           -0.15,
+		"bumpiness":       -0.05,
+		"wells":           -0.05,
+	}
+}
+
 // NewAutoPlayer creates a new AutoPlayer with default settings.
 func NewAutoPlayer() *AutoPlayer {
 	return &AutoPlayer{
 		enabled:    false,
 		speedLevel: 1,
+		weights:    DefaultWeights(),
+	}
+}
+
+// GetWeights returns a copy of the AutoPlayer's heuristic weights.
+func (ap *AutoPlayer) GetWeights() map[string]float64 {
+	copy := make(map[string]float64)
+	for k, v := range ap.weights {
+		copy[k] = v
+	}
+	return copy
+}
+
+// SetWeights updates the AutoPlayer's heuristic weights.
+func (ap *AutoPlayer) SetWeights(weights map[string]float64) {
+	for k, v := range weights {
+		ap.weights[k] = v
 	}
 }
 
@@ -157,8 +185,8 @@ func getColHeight(board *Board, col int) int {
 	return 0
 }
 
-// getAggregateHeight returns sum of all column heights.
-func getAggregateHeight(board *Board) int {
+// GetAggregateHeight returns sum of all column heights.
+func GetAggregateHeight(board *Board) int {
 	total := 0
 	for x := 0; x < 10; x++ {
 		total += getColHeight(board, x)
@@ -196,8 +224,8 @@ func evaluateLineClears(lines int) float64 {
 	}
 }
 
-// countHoles returns count of empty cells with blocks above.
-func countHoles(board *Board) int {
+// CountHoles returns count of empty cells with blocks above.
+func CountHoles(board *Board) int {
 	holes := 0
 	for x := 0; x < 10; x++ {
 		foundBlock := false
@@ -212,8 +240,8 @@ func countHoles(board *Board) int {
 	return holes
 }
 
-// calculateBumpiness returns sum of height differences between adjacent columns.
-func calculateBumpiness(board *Board) int {
+// CalculateBumpiness returns sum of height differences between adjacent columns.
+func CalculateBumpiness(board *Board) int {
 	bumpiness := 0
 	prevHeight := getColHeight(board, 0)
 	for x := 1; x < 10; x++ {
@@ -267,17 +295,17 @@ func countWells(board *Board) int {
 
 // evalAggregateHeight returns aggregate height score (lower is better).
 func evalAggregateHeight(board *Board) int {
-	return getAggregateHeight(board)
+	return GetAggregateHeight(board)
 }
 
 // evalHoles returns hole count (lower is better).
 func evalHoles(board *Board) int {
-	return countHoles(board)
+	return CountHoles(board)
 }
 
 // evalBumpiness returns bumpiness score (lower is better).
 func evalBumpiness(board *Board) int {
-	return calculateBumpiness(board)
+	return CalculateBumpiness(board)
 }
 
 // evalWells returns well count (lower is better).
@@ -285,35 +313,8 @@ func evalWells(board *Board) int {
 	return countWells(board)
 }
 
-// Heuristic weights for board evaluation.
-// LINE CLEARS ARE THE ABSOLUTE PRIORITY - all penalties minimized.
-// Line clear bonuses (up to 150.0 for Tetris) completely dominate scoring.
-// Penalties kept minimal only to prevent catastrophic moves.
-var heuristicWeights = map[string]float64{
-	"aggregateHeight": -0.10, // Minimal: line clears worth far more than height cost
-	"holes":           -0.15, // Minimal: allow temporary holes for line clear setups
-	"bumpiness":       -0.05, // Very minor: surface flatness rarely matters
-	"wells":           -0.05, // Very minor: only prevent truly catastrophic wells
-}
-
-// GetWeights returns a copy of current heuristic weights.
-func GetWeights() map[string]float64 {
-	copy := make(map[string]float64)
-	for k, v := range heuristicWeights {
-		copy[k] = v
-	}
-	return copy
-}
-
-// SetWeights updates heuristic weights.
-func SetWeights(weights map[string]float64) {
-	for k, v := range weights {
-		heuristicWeights[k] = v
-	}
-}
-
 // evaluateBoard calculates weighted score for a board position.
-func evaluateBoard(board *Board, piece *Tetromino, x, rotations int) float64 {
+func evaluateBoard(board *Board, piece *Tetromino, x, rotations int, weights map[string]float64) float64 {
 	// Evaluate current board state
 	aggHeight := float64(evalAggregateHeight(board))
 	holes := float64(evalHoles(board))
@@ -322,10 +323,10 @@ func evaluateBoard(board *Board, piece *Tetromino, x, rotations int) float64 {
 	lines := countCompleteLines(board)
 
 	// Apply weights with exponential line-clear bonus
-	score := heuristicWeights["aggregateHeight"]*aggHeight +
-		heuristicWeights["holes"]*holes +
-		heuristicWeights["bumpiness"]*bumpiness +
-		heuristicWeights["wells"]*wells +
+	score := weights["aggregateHeight"]*aggHeight +
+		weights["holes"]*holes +
+		weights["bumpiness"]*bumpiness +
+		weights["wells"]*wells +
 		evaluateLineClears(lines)
 
 	return score
@@ -353,7 +354,7 @@ func enumerateMoves(gameState *GameState, piece *Tetromino) []MoveDecision {
 }
 
 // FindBestMove finds the optimal move for current game state.
-func FindBestMove(gameState *GameState) *MoveDecision {
+func FindBestMove(gameState *GameState, weights map[string]float64) *MoveDecision {
 	if gameState.CurrentPiece == nil {
 		return nil
 	}
@@ -367,7 +368,7 @@ func FindBestMove(gameState *GameState) *MoveDecision {
 	bestScore := -999999.0
 
 	for i := range moves {
-		score := simulateAndEvaluate(gameState, &moves[i])
+		score := simulateAndEvaluate(gameState, &moves[i], weights)
 		moves[i].score = score
 
 		if score > bestScore || (score == bestScore && bestMove != nil && shouldPreferMove(moves[i], *bestMove)) {
@@ -383,14 +384,14 @@ func FindBestMove(gameState *GameState) *MoveDecision {
 // Evaluates current piece + next piece sequences to find combo setups.
 // Falls back to FindBestMove() if next piece is not available.
 // Returns nil if game state is invalid (nil pieces, game over, or no valid moves).
-func FindBestMoveWithNext(gameState *GameState) *MoveDecision {
+func FindBestMoveWithNext(gameState *GameState, weights map[string]float64) *MoveDecision {
 	if gameState == nil || gameState.CurrentPiece == nil {
 		return nil
 	}
 
 	// If no next piece available, use single-piece evaluation
 	if gameState.NextPiece == nil {
-		return FindBestMove(gameState)
+		return FindBestMove(gameState, weights)
 	}
 
 	moves := enumerateMoves(gameState, gameState.CurrentPiece)
@@ -403,7 +404,7 @@ func FindBestMoveWithNext(gameState *GameState) *MoveDecision {
 
 	for i := range moves {
 		// Use two-piece lookahead evaluation
-		score := EvaluateTwoPieceSequence(gameState, &moves[i], gameState.NextPiece)
+		score := EvaluateTwoPieceSequence(gameState, &moves[i], gameState.NextPiece, weights)
 		moves[i].score = score
 
 		if score > bestScore || (score == bestScore && bestMove != nil && shouldPreferMove(moves[i], *bestMove)) {
@@ -416,7 +417,7 @@ func FindBestMoveWithNext(gameState *GameState) *MoveDecision {
 }
 
 // simulateAndEvaluate simulates move and returns score.
-func simulateAndEvaluate(gameState *GameState, move *MoveDecision) float64 {
+func simulateAndEvaluate(gameState *GameState, move *MoveDecision, weights map[string]float64) float64 {
 	testBoard := cloneBoard(gameState.Board)
 	testPiece := clonePiece(gameState.CurrentPiece)
 
@@ -428,13 +429,13 @@ func simulateAndEvaluate(gameState *GameState, move *MoveDecision) float64 {
 
 	placePieceOnBoard(testBoard, testPiece)
 
-	return evaluateBoard(testBoard, testPiece, move.targetX, move.rotations)
+	return evaluateBoard(testBoard, testPiece, move.targetX, move.rotations, weights)
 }
 
 // EvaluateTwoPieceSequence evaluates a move sequence: current piece + next piece.
 // Returns combined score of both pieces' placements, including multi-line bonuses.
 // This enables the AI to plan setups where current piece enables better next piece placement.
-func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, nextPiece *Tetromino) float64 {
+func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, nextPiece *Tetromino, weights map[string]float64) float64 {
 	if gameState == nil || currentMove == nil || nextPiece == nil {
 		return -999999.0
 	}
@@ -489,7 +490,7 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 
 		comboLines := countCompleteLines(nextBoard)
 
-		nextScore := evaluateBoard(nextBoard, nextTestPiece, nextMoves[i].targetX, nextMoves[i].rotations)
+		nextScore := evaluateBoard(nextBoard, nextTestPiece, nextMoves[i].targetX, nextMoves[i].rotations, weights)
 
 		if comboLines >= 2 {
 			if comboLines == 4 {
@@ -513,7 +514,7 @@ func EvaluateTwoPieceSequence(gameState *GameState, currentMove *MoveDecision, n
 		}
 	}
 
-	currentScore := evaluateBoard(testBoard, testPiece, currentMove.targetX, currentMove.rotations) + evaluateLineClears(linesClearedByCurrent)
+	currentScore := evaluateBoard(testBoard, testPiece, currentMove.targetX, currentMove.rotations, weights) + evaluateLineClears(linesClearedByCurrent)
 
 	totalScore := currentScore*0.4 + bestNextScore*0.6
 
